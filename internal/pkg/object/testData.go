@@ -39,7 +39,7 @@ func AllObjects() []Object {
 func NameObject() Object {
 	nameObjectContent := Name{
 		Name:  testDomain,
-		Types: []Type{OTIP4Addr, OTIP6Addr},
+		Types: []Type{OTIP4Addr, OTIP6Addr, OTScionAddr4, OTScionAddr6},
 	}
 	return Object{Type: OTName, Value: nameObjectContent}
 }

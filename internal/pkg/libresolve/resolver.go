@@ -309,9 +309,13 @@ func (r *Resolver) handleAssertion(a *section.Assertion, redirMap map[string]str
 			ipMap[a.FQDN()] = o.Value.(string)
 		case object.OTIP4Addr:
 			ipMap[a.FQDN()] = o.Value.(string)
+		case object.OTScionAddr6:
+			ipMap[a.FQDN()] = o.Value.(string)
+		case object.OTScionAddr4:
+			ipMap[a.FQDN()] = o.Value.(string)
 		case object.OTName:
 			nameMap[a.FQDN()] = o.Value.(object.Name)
-		} //TODO add scion addresses
+		}
 		if _, ok := types[o.Type]; ok && a.FQDN() == name {
 			*isFinal = true
 		}

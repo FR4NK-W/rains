@@ -203,9 +203,9 @@ func TestObjectString(t *testing.T) {
 
 func TestObjectSort(t *testing.T) {
 	objTypes := []Type{OTNextKey, OTExtraKey, OTInfraKey, OTRegistrant, OTRegistrar, OTServiceInfo, OTCertInfo, OTNameset, OTDelegation, OTRedirection,
-		OTIP4Addr, OTIP6Addr, OTName}
+		OTIP4Addr, OTIP6Addr, OTScionAddr6, OTScionAddr4, OTName}
 	expected := []Type{OTName, OTIP6Addr, OTIP4Addr, OTRedirection, OTDelegation, OTNameset, OTCertInfo, OTServiceInfo, OTRegistrar, OTRegistrant,
-		OTInfraKey, OTExtraKey, OTNextKey}
+		OTInfraKey, OTExtraKey, OTNextKey, OTScionAddr6, OTScionAddr4}
 	obj := Object{Type: OTName, Value: Name{Name: "", Types: objTypes}}
 	expectedObj := Object{Type: OTName, Value: Name{Name: "", Types: expected}}
 	obj.Sort()
