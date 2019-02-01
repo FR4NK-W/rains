@@ -42,6 +42,8 @@ func TestEncodeNameObject(t *testing.T) {
 				object.OTInfraKey,
 				object.OTExtraKey,
 				object.OTNextKey,
+				/*object.OTScionAddr6,
+				object.OTScionAddr4,*/
 			},
 		}, "name.ethz.ch [ :name: :ip6: :ip4: :redir: :deleg: :nameset: :cert: :srv: :regr: :regt: :infra: :extra: :next: ]"},
 		{object.Name{Name: "ethz.ch", Types: []object.Type{object.Type(-1)}}, "ethz.ch [  ]"},

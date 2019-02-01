@@ -249,6 +249,8 @@ func allAllowedTypes() map[object.Type]bool {
 	return map[object.Type]bool{
 		object.OTIP6Addr:     true,
 		object.OTIP4Addr:     true,
+		/*object.OTScionAddr6:  true,
+		object.OTScionAddr4:  true,*/
 		object.OTServiceInfo: true,
 		object.OTName:        true,
 	}
@@ -258,6 +260,8 @@ func allowedAddrTypes() map[object.Type]bool {
 	return map[object.Type]bool{
 		object.OTIP6Addr: true,
 		object.OTIP4Addr: true,
+		/*object.OTScionAddr6:  true,
+		object.OTScionAddr4:  true,*/
 	}
 }
 
@@ -272,7 +276,11 @@ func handleRedirect(name, context string, cache cache.Assertion, allowedTypes ma
 			return asserts, nil
 		}
 	}
-	//TODO add scion addr types
+	if allowedTypes[object.OTScionAddr6] || allowedTypes[object.OTScionAddr4] {
+		//TODO add SCION addr types
+		return nil, fmt.Errorf("Not implemented address type %v and %v",
+			object.OTScionAddr6, object.OTScionAddr4)
+	}
 	if allowedTypes[object.OTServiceInfo] && strings.HasPrefix(name, rainsSrvPrefix) {
 		if asserts, ok := cache.Get(name, context, object.OTServiceInfo, true); ok {
 			for _, srv := range asserts {

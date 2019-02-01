@@ -476,8 +476,8 @@ const (
 	OTInfraKey    Type = 11
 	OTExtraKey    Type = 12
 	OTNextKey     Type = 13
-	OTScionAddr4  Type = 14
-	OTScionAddr6  Type = 15
+	OTScionAddr6  Type = 14
+	OTScionAddr4  Type = 15
 )
 
 //ParseTypes returns the object type(s) specified in qType
