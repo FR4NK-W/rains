@@ -82,7 +82,7 @@ func sendCapability(destination net.Addr, capabilities []message.Capability, s *
 	s.sendTo(msg, destination, 1, 1)
 }
 
-//LoadConfig loads and stores server configuration
+//LoadConfig loads server configuration
 func LoadConfig(configPath string) (Config, error) {
 	config := Config{}
 	file, err := ioutil.ReadFile(configPath)
@@ -93,6 +93,12 @@ func LoadConfig(configPath string) (Config, error) {
 	if err = json.Unmarshal(file, &config); err != nil {
 		log.Warn("Could not unmarshal json format of config", "error", err)
 		return Config{}, err
+	}
+	if config.AllowedAddrTypes == nil {
+		config.AllowedAddrTypes = DefaultAllowedAddrTypes
+	}
+	if config.AllAllowedTypes == nil {
+		config.AllAllowedTypes = DefaultAllAllowedTypes
 	}
 	config.AssertionCheckPointInterval *= time.Second
 	config.NegAssertionCheckPointInterval *= time.Second
@@ -111,6 +117,16 @@ func LoadConfig(configPath string) (Config, error) {
 	config.ReapNegAssertionCacheInterval *= time.Second
 	config.ReapPendingQCacheInterval *= time.Second
 	return config, nil
+}
+
+//StoreConfig stores server configuration
+func StoreConfig(config Config, configPath string) error {
+	data, err := json.Marshal(config)
+	if err != nil {
+		return err
+	}
+	err = ioutil.WriteFile(configPath, data, 0600)
+	return err
 }
 
 //loadTLSCertificate load a tls certificate from certPath

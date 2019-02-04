@@ -10,6 +10,7 @@ import (
 	"github.com/netsec-ethz/rains/internal/pkg/libresolve"
 	"github.com/netsec-ethz/rains/internal/pkg/util"
 	"github.com/scionproto/scion/go/lib/snet"
+	"github.com/netsec-ethz/rains/internal/pkg/object"
 )
 
 const (
@@ -43,6 +44,10 @@ type Server struct {
 	caches *Caches
 	//scionConn is the server UDP socket if we are in that mode, or nil otherwise.
 	scionConn snet.Conn
+	// allowedAddrTypes is a map of allowed address types
+	allowedAddrTypes  map[object.Type]bool
+	// allAllowedTypes is a map of all allowed object types
+	allAllowedTypes   map[object.Type]bool
 }
 
 //New returns a pointer to a newly created rainsd server instance with the given config. The server
@@ -74,6 +79,10 @@ func New(config Config, id string) (server *Server, err error) {
 		log.Warn("Failed to load root zone public key")
 		return nil, err
 	}
+
+	server.allowedAddrTypes = server.config.AllowedAddrTypes
+	server.allAllowedTypes = server.config.AllAllowedTypes
+
 	log.Info("Successfully initialized server", "id", id)
 	return
 }

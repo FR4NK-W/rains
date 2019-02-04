@@ -7,6 +7,7 @@ import (
 	"github.com/netsec-ethz/rains/internal/pkg/connection"
 	"github.com/netsec-ethz/rains/internal/pkg/message"
 	"github.com/netsec-ethz/rains/internal/pkg/util"
+	"github.com/netsec-ethz/rains/internal/pkg/object"
 )
 
 //Config lists possible configurations of a rains server
@@ -60,7 +61,26 @@ type Config struct {
 	ReapAssertionCacheInterval    time.Duration         //in seconds
 	ReapNegAssertionCacheInterval time.Duration         //in seconds
 	ReapPendingQCacheInterval     time.Duration         //in seconds
+
+	//transport
+	AllowedAddrTypes              map[object.Type]bool //allowed address types
+	AllAllowedTypes               map[object.Type]bool //all allowed object types
 }
+
+var DefaultAllowedAddrTypes         = map[object.Type]bool{
+						object.OTIP6Addr: true,
+						object.OTIP4Addr: true,
+						object.OTScionAddr6:  true,
+						object.OTScionAddr4:  true,
+					     }
+var DefaultAllAllowedTypes          = map[object.Type]bool{
+						object.OTIP6Addr:     true,
+						object.OTIP4Addr:     true,
+						object.OTScionAddr6:  true,
+						object.OTScionAddr4:  true,
+						object.OTServiceInfo: true,
+						object.OTName:        true,
+					     }
 
 //DefaultConfig return the default configuration for the zone publisher.
 func DefaultConfig() Config {
@@ -85,8 +105,8 @@ func DefaultConfig() Config {
 		TLSPrivateKeyFile:  "data/cert/server.key",
 
 		// SCION specific settings
-		DispatcherSock: "TODO determine default value",
-		SciondSock:     "TODO determine default value",
+		DispatcherSock: "/run/shm/dispatcher/default.sock",
+		SciondSock:     "/run/shm/sciond/default.sock",
 
 		//inbox
 		PrioBufferSize:          50,
@@ -122,5 +142,9 @@ func DefaultConfig() Config {
 		ReapAssertionCacheInterval:    15 * time.Minute,
 		ReapNegAssertionCacheInterval: 15 * time.Minute,
 		ReapPendingQCacheInterval:     15 * time.Minute,
+
+		//transport
+		AllowedAddrTypes:          DefaultAllowedAddrTypes,
+		AllAllowedTypes:           DefaultAllAllowedTypes,
 	}
 }
