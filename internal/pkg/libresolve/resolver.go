@@ -22,6 +22,7 @@ import (
 	"github.com/netsec-ethz/rains/internal/pkg/token"
 	"github.com/netsec-ethz/rains/internal/pkg/util"
 	"github.com/scionproto/scion/go/lib/snet"
+	"bytes"
 )
 
 type ResolutionMode int
@@ -38,6 +39,8 @@ const (
 	Recursive           ResolutionMode = iota
 	Forward
 )
+
+const maxUDPPacketBytes = 9000
 
 // Resolver provides methods to resolve names in RAINS.
 type Resolver struct {
@@ -147,10 +150,24 @@ func (r *Resolver) createConnAndWrite(addr net.Addr, msg *message.Message) {
 	}
 	r.Connections.AddConnection(conn)
 	go r.answerDelegQueries(conn)
-	writer := cbor.NewWriter(conn)
-	if err := writer.Marshal(msg); err != nil {
-		log.Error("failed to marshal message", err)
-		r.Connections.CloseAndRemoveConnections(addr)
+
+	switch conn.LocalAddr().(type) {
+		case *net.TCPAddr:
+			writer := cbor.NewWriter(conn)
+			if err := writer.Marshal(&msg); err != nil {
+				log.Error("failed to marshal message", err)
+				r.Connections.CloseAndRemoveConnections(addr)
+			}
+		case *snet.Addr:
+			encoding := new(bytes.Buffer)
+			if err := cbor.NewWriter(encoding).Marshal(&msg); err != nil {
+				log.Error("failed to marshal message to conn:", err)
+			}
+			if _, err := conn.Write(encoding.Bytes()); err != nil {
+				log.Error("unable to write encoded message to connection:", err)
+			} else {
+				log.Info("Written to SCION", "Addr", conn.LocalAddr(), "to", conn.RemoteAddr(), "n", len(encoding.Bytes()), "message", msg.Content)
+			}
 	}
 }
 
@@ -186,12 +203,13 @@ func (r *Resolver) recursiveResolve(q *query.Name, recurseCount int) (*message.M
 	}
 	//Start recursive lookup
 	for _, root := range r.RootNameServers {
-		log.Debug("connecting to root server", "serverAddr", root, "query", q)
+		log.Info("connecting to root server", "serverAddr", root, "query", q)
 		addr := root
 		for {
 			msg := message.Message{Token: token.New(), Content: []section.Section{q}}
 			answer, err := util.SendQuery(msg, addr, r.DialTimeout*time.Millisecond)
 			if err != nil || len(answer.Content) == 0 {
+				log.Debug("error in send query", "answer", answer, "len(answer.Content)", len(answer.Content), "err", err)
 				break
 			}
 			log.Info("recursive resolver rcv answer", "answer", answer, "query", q)
@@ -357,22 +375,38 @@ func (r *Resolver) handleZone(z *section.Zone, redirMap map[string]string,
 func (r *Resolver) handleRedirect(name string, srvMap map[string]object.ServiceInfo,
 	ipMap map[string]string, nameMap map[string]object.Name, allowedTypes map[object.Type]bool) (
 	net.Addr, error) {
-	if allowedTypes[object.OTIP6Addr] || allowedTypes[object.OTIP4Addr] {
+	if allowedTypes[object.OTIP6Addr] || allowedTypes[object.OTIP4Addr] || allowedTypes[object.OTScionAddr6] || allowedTypes[object.OTScionAddr4] {
 		if ipAddr, ok := ipMap[name]; ok {
-			return net.ResolveTCPAddr("", fmt.Sprintf("%s:%d", ipAddr, rainsPort))
-		}
-	}
-	if allowedTypes[object.OTScionAddr6] || allowedTypes[object.OTScionAddr4] {
-		if ipAddr, ok := ipMap[name]; ok {
-			return snet.AddrFromString(fmt.Sprintf("%s:%d", ipAddr, rainsPort))
+			var addr net.Addr
+			addr, err := net.ResolveTCPAddr("", fmt.Sprintf("%s:%d", ipAddr, rainsPort))
+			if err != nil {
+				log.Info("ResolveTCPAddr: Not an IP addr, will try as an SCION address", "addr", addr, "ipAddr", ipAddr, "err", err)
+			}
+
+			addr, err = snet.AddrFromString(fmt.Sprintf("%s:%d", ipAddr, rainsPort))
+			if err != nil {
+				log.Error("Not and IP addr nor a SCION addr at handleRedirect OTXAddrX", "addr", addr, "err", err)
+			}
+			return addr, err
 		}
 	}
 	if allowedTypes[object.OTServiceInfo] && strings.HasPrefix(name, rainsPrefix) {
 		if srvVal, ok := srvMap[name]; ok {
-			if addr, err := r.handleRedirect(srvVal.Name, srvMap, ipMap, nameMap,
+			var addr net.Addr
+			var err error
+			if addr, err = r.handleRedirect(srvVal.Name, srvMap, ipMap, nameMap,
 				r.allowedAddrTypes); err == nil {
-				ip := strings.Split(addr.String(), ":")[0]
-				return net.ResolveTCPAddr("", fmt.Sprintf("%s:%d", ip, srvVal.Port))
+				portSep := strings.LastIndex(addr.String(), ":")
+				ip := addr.String()[:portSep]
+				addr, err = net.ResolveTCPAddr("", fmt.Sprintf("%s:%d", ip, srvVal.Port))
+				if err!=nil {
+					log.Info("ResolveTCPAddr: Not an IP addr, will try as an SCION address", "addr", addr, "err", err)
+				}
+				addr, err = snet.AddrFromString(fmt.Sprintf("%s:%d", ip, srvVal.Port))
+				if err != nil {
+					log.Error("Not and IP addr nor a SCION addr at handleRedirect OTXAddrX", "addr", addr, "err", err)
+				}
+				return addr, err
 			}
 		}
 	}
@@ -384,7 +418,10 @@ func (r *Resolver) handleRedirect(name string, srvMap map[string]object.ServiceI
 			}
 			if as, err := r.handleRedirect(nameVal.Name, srvMap, ipMap, nameMap,
 				allowTypes); err == nil {
-				return as, nil
+				if as == nil {
+					log.Error("Nil addr at handleRedirect OTName", "as", as, "err", err)
+				}
+				return as, err
 			}
 		}
 	}
@@ -396,23 +433,64 @@ func (r *Resolver) handleRedirect(name string, srvMap map[string]object.ServiceI
 func (r *Resolver) answerDelegQueries(conn net.Conn) {
 	reader := cbor.NewReader(conn)
 	writer := cbor.NewWriter(conn)
+	buf := make([]byte, maxUDPPacketBytes)
+
+	breaking := false
 	for {
 		var msg message.Message
-		if err := reader.Unmarshal(&msg); err != nil {
-			if err.Error() == "failed to read tag: EOF" {
-				log.Info("Connection has been closed", "remoteAddr", conn.RemoteAddr())
-			} else {
-				log.Warn(fmt.Sprintf("failed to read from client: %v", err))
+		switch conn.LocalAddr().(type) {
+		case *net.TCPAddr:
+			if err := reader.Unmarshal(&msg); err != nil {
+				if err.Error() == "failed to read tag: EOF" {
+					log.Info("Connection has been closed", "remoteAddr", conn.RemoteAddr())
+				} else {
+					log.Warn(fmt.Sprintf("failed to read from client: %v", err))
+				}
+				r.Connections.CloseAndRemoveConnection(conn)
+				breaking = true
 			}
-			r.Connections.CloseAndRemoveConnection(conn)
+		case *snet.Addr:
+			n, addr, err := conn.(snet.Conn).ReadFromSCION(buf)
+			if err != nil {
+				log.Warn("Failed to ReadFromSCION", "err", err)
+				breaking = true
+			}
+			data := buf[:n]
+			if err := cbor.NewReader(bytes.NewReader(data)).Unmarshal(&msg); err != nil {
+				log.Warn("Read from SCION", "Addr", fmt.Sprintf("%s:%v", addr.Host.L3, addr.Host.L4), "to", conn.(snet.Conn).LocalAddr(), "n", n)
+				log.Warn("failed to unmarshal CBOR", "err", err)
+				breaking = true
+			}
+		}
+		if breaking {
 			break
 		}
+
 		answer := r.getDelegations(msg)
 		log.Info("received delegation query. Answer with cached assertions", "query", msg, "assertions", answer)
 		msg = message.Message{Token: msg.Token, Content: answer}
-		if err := writer.Marshal(&msg); err != nil {
-			log.Error("failed to marshal message", err)
-			r.Connections.CloseAndRemoveConnection(conn)
+
+		switch conn.LocalAddr().(type) {
+		case *net.TCPAddr:
+			if err := writer.Marshal(&msg); err != nil {
+				log.Error("failed to marshal message", err)
+				r.Connections.CloseAndRemoveConnection(conn)
+				breaking = true
+			}
+		case *snet.Addr:
+			encoding := new(bytes.Buffer)
+			if err := cbor.NewWriter(encoding).Marshal(&msg); err != nil {
+				log.Error("failed to marshal message to conn", err)
+				breaking = true
+			}
+			if _, err := conn.Write(encoding.Bytes()); err != nil {
+				log.Error("unable to write encoded message to connection", err)
+				breaking = true
+			} else {
+				log.Info("Written to SCION", "Addr", conn.LocalAddr(), "to", conn.RemoteAddr(), "n", len(encoding.Bytes()), "message", msg.Content)
+			}
+		}
+		if breaking {
 			break
 		}
 	}

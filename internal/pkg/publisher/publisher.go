@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net"
 	"sort"
-	"strings"
+	//"strings"
 	"time"
 
 	log "github.com/inconshreveable/log15"
@@ -25,7 +25,8 @@ import (
 const defaultDispatcher = "/run/shm/dispatcher/default.sock"
 
 func scionAddrToSciond(a *snet.Addr) string {
-	return fmt.Sprintf("/run/shm/sciond/sd%s.sock", strings.Replace(a.IA.String(), ":", "_", -1))
+	//return fmt.Sprintf("/run/shm/sciond/sd%s.sock", strings.Replace(a.IA.String(), ":", "_", -1))
+	return "/run/shm/sciond/default.sock"
 }
 
 //Rainspub represents the publishing process of a zone authority. It can be configured to do
@@ -46,7 +47,7 @@ func New(config Config) *Rainspub {
 //configuration. This implementation assumes that there is exactly one zone per zonefile.
 func (r *Rainspub) Publish() error {
 	// If we have a SCION source address, initialize snet now.
-	if r.Config.SrcAddr.Type == connection.SCION {
+	if r.Config.SrcAddr.Type == connection.SCION && snet.DefNetwork == nil {
 		SCIONLocal := r.Config.SrcAddr.Addr.(*snet.Addr)
 		if err := snet.Init(SCIONLocal.IA, scionAddrToSciond(SCIONLocal), defaultDispatcher); err != nil {
 			return fmt.Errorf("failed to initialize snet: %v", err)
